@@ -1,0 +1,70 @@
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
+
+import java.io.*;
+import java.util.List;
+
+public class PdfToHtmlPreserveLayout extends PDFTextStripper {
+
+    private final StringBuilder htmlContent = new StringBuilder();
+
+    public PdfToHtmlPreserveLayout() throws IOException {
+        super.setSortByPosition(true); // Preserve reading order
+    }
+
+    @Override
+    protected void startDocument(PDDocument document) throws IOException {
+        htmlContent.append("<html><head><meta charset='UTF-8'><style>")
+                .append("body { font-family: Arial, sans-serif; white-space: pre; } ")
+                .append("</style></head><body>\n");
+    }
+
+    @Override
+    protected void endDocument(PDDocument document) throws IOException {
+        htmlContent.append("</body></html>");
+    }
+
+    @Override
+    protected void writeString(String string, List<TextPosition> textPositions) throws IOException {
+        for (TextPosition text : textPositions) {
+            String css = String.format(
+                    "style='position:absolute; left:%.2fpx; top:%.2fpx; font-size:%.2fpx;'",
+                    text.getXDirAdj() * 1.3333,  // Scale for HTML pixels
+                    text.getYDirAdj() * 1.3333,
+                    text.getFontSizeInPt() * 1.3333
+            );
+
+            htmlContent.append("<span ").append(css).append(">")
+                    .append(escapeHtml(text.getUnicode()))
+                    .append("</span>\n");
+        }
+    }
+
+    private String escapeHtml(String text) {
+        return text.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    public String getHtmlContent() {
+        return htmlContent.toString();
+    }
+
+    public static void main(String[] args) {
+        String pdfPath = "input.pdf";
+        String htmlPath = "output.html";
+
+        try (PDDocument document = PDDocument.load(new File(pdfPath))) {
+            PdfToHtmlPreserveLayout stripper = new PdfToHtmlPreserveLayout();
+            stripper.writeText(document, new OutputStreamWriter(new ByteArrayOutputStream()));
+
+            try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(htmlPath), "UTF-8"))) {
+                writer.write(stripper.getHtmlContent());
+            }
+
+            System.out.println("HTML created: " + htmlPath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
